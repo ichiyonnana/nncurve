@@ -9,7 +9,8 @@ import importlib
 import maya.cmds as cmds
 import maya.mel as mel
 
-import nnutil as nu
+import nnutil.core as nu
+import nnutil.display as nd
 
 # TODO: カーブを比率で分割しても曲率の違いで 全体曲線:部分曲線 と 全体折れ線:部分直線 の比率が一致しない問題どうにかする (元の比率をキャッシュする？)
 # TODO: ループ時の対応 (メッセージ出しつつ適当な所始点にしてしまいたい)
@@ -21,15 +22,9 @@ DEBUG = False
 
 window_width = 300
 header_width = 50
-color_x = (1.0, 0.5, 0.5)
-color_y = (0.5, 1.0, 0.5)
-color_z = (0.5, 0.5, 1.0)
-color_joint = (0.5, 1.0, 0.75)
-color_select = (0.5, 0.75, 1.0)
 bw_single = 24
 bw_double = bw_single*2 + 2
 bw_3 = bw_single*3 + 2
-
 
 # アトリビュートにエッジ列を文字列で保存する際の区切り文字
 component_separator = ','
@@ -40,9 +35,11 @@ curve_prefix = "NNAEOC_Curve"
 # エッジ列をカーブに保存する際のカスタムアトリビュート名
 attr_name = "dst_edges"
 
+
 def printd(description, message):
     if DEBUG:
         print(str(description) + ": " + str(message))
+
 
 def addAttributes(curve, edges):
     """
@@ -59,6 +56,7 @@ def addAttributes(curve, edges):
     cmds.setAttr(attr_fullname, edges_str, e=True, type="string")
     cmds.setAttr(attr_fullname, e=True, channelBox=True)
 
+
 def changeAppearance(curve):
     """カーブの見た目を変更する"""
     line_width = 2
@@ -71,14 +69,14 @@ def changeAppearance(curve):
     cmds.setAttr('%s.overrideColorG' % curve, color[1])
     cmds.setAttr('%s.overrideColorB' % curve, color[2])
     cmds.setAttr('%s.useOutlinerColor' % curve, True)
-    cmds.setAttr('%s.outlinerColor' % curve, color[0],color[1],color[2])
+    cmds.setAttr('%s.outlinerColor' % curve, color[0], color[1], color[2])
+
 
 def makeCurve(edges, n=4):
     """
     引数のエッジ列からカーブを生成してアトリビュート付与する
     連続しない複数エッジ列の場合はエラーを返す (エッジ列の分割は関数の外で行う)
     """
-
     # カーブ作成
     cmds.select(edges, replace=True)
     curve = cmds.polyToCurve(form=2, degree=3, conformToSmoothMeshPreview=1)[0]
@@ -174,18 +172,21 @@ def alignEdgesOnCurve(edges, curve, keep_ratio_mode=True, n=4):
       カーブで形を変えて、頂点でエッジフローだけ直すのを平行してやる感じ
     """
 
+
 def isValid(curve):
     """
     このツールで利用できる有効なカーブかどうかの判定
     """
     return cmds.attributeQuery(attr_name, node=curve, exists=True)
 
+
 def isAvailable(curve):
     """
     processAll 時に fitToCurve を適用するなら Trueを返す
     現状はビジビリティで判定
     """
-    return cmds.getAttr("%(curve)s.visibility"%locals())
+    return cmds.getAttr("%(curve)s.visibility" % locals())
+
 
 def getAllCurves():
     """
@@ -193,14 +194,13 @@ def getAllCurves():
     """
     return cmds.ls(curve_prefix + "*")
 
-class NN_ToolWindow(object):
 
+class NN_ToolWindow(object):
 
     def __init__(self):
         self.window = 'NN_Curve'
         self.title = 'NN_Curve'
         self.size = (350, 95)
-
 
     def create(self):
         if cmds.window(self.window, exists=True):
@@ -219,7 +219,7 @@ class NN_ToolWindow(object):
         self.columnLayout = cmds.columnLayout()
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Make' ,width=header_width)
+        self.label1 = cmds.text(label='Make', width=header_width)
         self.bt_ = cmds.button(l='Make Curve', c=self.onMakeCurve)
         self.bt_ = cmds.button(l='Set Active', c=self.onSetActive)
         cmds.setParent("..")
@@ -227,24 +227,22 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Active Objects' )
+        self.label1 = cmds.text(label='Active Objects')
         cmds.setParent("..")
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Edges' ,width=header_width)
+        self.label1 = cmds.text(label='Edges', width=header_width)
         self.ed_edges = cmds.textField(tx='')
         self.bt_hoge = cmds.button(l='Set', c=self.onSetEdges)
         self.bt_hoge = cmds.button(l='Sel', c=self.onSelectEdges)
         cmds.setParent("..")
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Curve' ,width=header_width)
+        self.label1 = cmds.text(label='Curve', width=header_width)
         self.ed_curve = cmds.textField(tx='')
         self.bt_hoge = cmds.button(l='Set', c=self.onSetCurve)
         self.bt_hoge = cmds.button(l='Sel', c=self.onSelectCurve)
         cmds.setParent("..")
-
-
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
         self.bt_ = cmds.button(l='Fit to Curve', c=self.onFitActive, width=bw_3)
@@ -267,7 +265,7 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Fit' ,width=header_width)
+        self.label1 = cmds.text(label='Fit', width=header_width)
         self.bt_ = cmds.button(l='Fit All', c=self.onFitAll, width=bw_3)
         self.bt_ = cmds.button(l='Selected', c=self.onFitSelection, width=bw_double)
         cmds.setParent("..")
@@ -275,7 +273,7 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Rebuild' ,width=header_width)
+        self.label1 = cmds.text(label='Rebuild', width=header_width)
         self.bt_ = cmds.button(l='Rebuild All', c=self.onRebuildAll, width=bw_3)
         self.bt_ = cmds.button(l='Selected', c=self.onRebuildSelection, dgc=self.onRebuildOp, width=bw_double)
         self.bt_ = cmds.button(l='[Op]', c=self.onRebuildOp, width=bw_single)
@@ -284,7 +282,7 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Smooth' ,width=header_width)
+        self.label1 = cmds.text(label='Smooth', width=header_width)
         self.bt_ = cmds.button(l='Smooth All', c=self.onSmoothAll, width=bw_3)
         self.bt_ = cmds.button(l='Selected', c=self.onSmoothSelection, dgc=self.onSmoothOp, width=bw_double)
         self.bt_ = cmds.button(l='[Op]', c=self.onSmoothOp, width=bw_single)
@@ -293,7 +291,7 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Select' ,width=header_width)
+        self.label1 = cmds.text(label='Select', width=header_width)
         self.bt_ = cmds.button(l='Select All', c=self.onSelectAll, width=bw_3)
         self.bt_ = cmds.button(l='Visible [inv]', c=self.onSelectVisible, dgc=self.onSelectInvisible, width=bw_3)
         cmds.setParent("..")
@@ -301,7 +299,7 @@ class NN_ToolWindow(object):
         cmds.separator(width=window_width)
 
         self.rowLayout1 = cmds.rowLayout(numberOfColumns=10)
-        self.label1 = cmds.text( label='Display' ,width=header_width)
+        self.label1 = cmds.text(label='Display', width=header_width)
         self.bt_ = cmds.button(l='Draw On Top [off]', c=self.onEnableDrawOnTop, dgc=self.onDisableDrawOnTop)
         cmds.setParent("..")
 
@@ -352,7 +350,7 @@ class NN_ToolWindow(object):
 
         selections = cmds.ls(selection=True)
 
-        if len(selections) is 0:
+        if len(selections) == 0:
             return
 
         if curve_prefix in selections[0]:
@@ -361,7 +359,6 @@ class NN_ToolWindow(object):
             edges_str = cmds.getAttr(attr_fullname)
             cmds.textField(self.ed_curve, e=True, tx=curve_str)
             cmds.textField(self.ed_edges, e=True, tx=edges_str)
-
 
     def onSetEdges(self, *args):
         """
@@ -376,7 +373,6 @@ class NN_ToolWindow(object):
         curve_str = cmds.textField(self.ed_curve, q=True, tx=True)
         if not curve_str is "":
             addAttributes(curve_str, edges_str)
-
 
     def onSelectEdges(self, *args):
         edges_str = cmds.textField(self.ed_edges, q=True, tx=True)
@@ -409,7 +405,6 @@ class NN_ToolWindow(object):
 
         cmds.select(curve)
 
-
     def onFitActive(self, *args):
         edges_str = cmds.textField(self.ed_edges, q=True, tx=True)
         edges = edges_str.split(component_separator)
@@ -420,7 +415,6 @@ class NN_ToolWindow(object):
 
         n = int(cmds.textField(self.tx_rebuild_resolution, q=True, tx=True))
         alignEdgesOnCurve(edges, curve_str, keep_ratio_mode)
-
 
     def onFitSelection(self, *args):
         """ 選択カーブのみ fit to curve """
@@ -451,7 +445,6 @@ class NN_ToolWindow(object):
                 keep_ratio_mode = cmds.checkBox(self.cb_keep_ratio_mode, q=True, v=True)
                 alignEdgesOnCurve(edges, curve_str, keep_ratio_mode)
 
-
     def onReMakeCurve(self, *args):
         """
         アクティブエッジでアクティブカーブを作り直す
@@ -473,7 +466,7 @@ class NN_ToolWindow(object):
         # カーブのヒストリ消す
         cmds.DeleteHistory(new_curve)
 
-        #リネーム
+        # リネーム
         cmds.rename(new_curve, curve)
 
         cmds.textField(self.ed_curve, e=True, tx=curve)
@@ -485,7 +478,7 @@ class NN_ToolWindow(object):
         """
         カーブの形状からエッジ列を再設定
         """
-        nu.message("not implemented")
+        nd.message("not implemented")
         pass
 
     def onRebuildResolutionDiv2(self, *args):
@@ -563,7 +556,6 @@ class NN_ToolWindow(object):
     def onSmoothOp(self, *args):
         cmds.SmoothCurveOptions()
 
-
     def onSelectAll(self, *args):
         """
         すべてのカーブを選択する
@@ -614,8 +606,10 @@ class NN_ToolWindow(object):
 def showNNToolWindow():
     NN_ToolWindow().create()
 
+
 def main():
     showNNToolWindow()
+
 
 if __name__ == "__main__":
     main()
